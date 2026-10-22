@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Checks · Mapa de Vistorias</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<style>
+/* Checks · Mapa de Vistorias — v1.0 (22/10/2026)
+   Lê a rota ?acao=mapa do backend (JSONP) e mostra as vistorias no mapa:
+   empresa (resultado), saída de esgoto e PV (fotos georreferenciadas). */
+:root{--P:#1e3a5f;--Ph:#0f2541;--A:#38bdf8;--OK:#10b981;--ER:#dc2626;--WN:#f59e0b;--BO:#e2e8f0;--BG:#f0f4f8;--ME:#64748b;--T:#14262e}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--BG);color:var(--T);font-size:15px;line-height:1.4;display:flex;flex-direction:column}
+header{background:var(--P);color:#fff;padding:10px 14px 8px;flex:none}
+.brand{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.brand .t{font-size:17px;font-weight:800}.brand .s{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--A);font-weight:700}
+.brand .st{font-size:11px;color:#cbd5e1;text-align:right}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
+.kpi{background:rgba(255,255,255,.08);border-radius:10px;padding:7px 6px;text-align:center;cursor:pointer;border:1.5px solid transparent}
+.kpi.on{border-color:var(--A);background:rgba(56,189,248,.15)}
+.kpi b{display:block;font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}.kpi span{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#cbd5e1}
+.kpi.ok b{color:#6ee7b7}.kpi.nok b{color:#fca5a5}.kpi.venc b{color:#fcd34d}
+.bar{display:flex;gap:6px;padding:8px 10px;background:#fff;border-bottom:1px solid var(--BO);flex:none;overflow-x:auto;align-items:center}
+.bar input,.bar select{border:1.5px solid var(--BO);border-radius:9px;padding:9px 10px;font-size:14px;font-family:inherit;background:#f9fafb;min-height:42px}
+.bar input{flex:1;min-width:150px}
+.bar button{border:0;border-radius:9px;padding:9px 12px;font:700 13px system-ui,sans-serif;background:var(--P);color:#fff;min-height:42px;white-space:nowrap}
+.bar button.sec{background:#e2e8f0;color:#334155}
+main{flex:1;display:flex;min-height:0;position:relative}
+#map{flex:1;min-height:0;background:#dbe4ea}
+aside{width:360px;flex:none;background:#fff;border-left:1px solid var(--BO);display:flex;flex-direction:column;min-height:0}
+aside h2{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--ME);padding:10px 12px 6px;flex:none;display:flex;justify-content:space-between}
+.lista{overflow-y:auto;flex:1;padding:0 8px 8px}
+.card{border:1px solid var(--BO);border-radius:10px;padding:9px 10px;margin-bottom:7px;cursor:pointer;background:#fff;border-left-width:5px}
+.card.ok{border-left-color:var(--OK)}.card.nok{border-left-color:var(--ER)}.card.venc{border-left-color:#7f1d1d;background:#fff5f5}
+.card .e{font-weight:800;font-size:14px}.card .m{font-size:12.5px;color:var(--ME);margin-top:2px}
+.card .r{font-size:12px;margin-top:4px;font-weight:700}.card.ok .r{color:#047857}.card.nok .r,.card.venc .r{color:#b91c1c}
+.card:hover,.card.sel{background:#eff6ff;border-color:#93c5fd}
+.pill{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:12px;background:#f1f5f9;color:#334155;margin-left:4px}
+.pill.venc{background:#fee2e2;color:#991b1b}.pill.prox{background:#fef3c7;color:#92400e}
+.leaflet-popup-content{font-size:13.5px;line-height:1.45;margin:10px 12px;min-width:230px}
+.leaflet-popup-content b.e{font-size:15px}
+.pop-acoes{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.pop-acoes a,.pop-acoes button{font:700 12px system-ui,sans-serif;background:var(--P);color:#fff;border:0;border-radius:7px;padding:7px 9px;text-decoration:none;cursor:pointer}
+.pop-acoes a.sec,.pop-acoes button.sec{background:#e2e8f0;color:#334155}
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.pin.ok{background:var(--OK)}.pin.nok{background:var(--ER)}.pin.venc{background:#7f1d1d;animation:pisca 1.2s infinite}.pin.saida{background:#0284c7;border-radius:50%;transform:none;width:16px;height:16px}
+.pin.pv{background:var(--WN);border-radius:3px;transform:rotate(45deg);width:16px;height:16px}.pin.pv.vermelho{background:var(--ER)}.pin.pv.verde{background:var(--OK)}
+@keyframes pisca{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.pin.venc{animation:none}}
+.legenda{position:absolute;left:10px;bottom:28px;background:rgba(255,255,255,.95);border-radius:10px;padding:8px 10px;font-size:11.5px;z-index:500;box-shadow:0 2px 8px rgba(0,0,0,.2);line-height:1.7}
+.legenda i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.sheet-bg{position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:900}
+.sheet{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(520px,94vw);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;padding:18px;z-index:901;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.sheet h3{font-size:18px;color:var(--P);margin-bottom:8px}.sheet p{margin:6px 0;font-size:14.5px}
+.sheet input{width:100%;border:1.5px solid var(--BO);border-radius:9px;padding:11px;font-size:16px;margin:8px 0}
+.sheet .b{display:block;width:100%;border:0;border-radius:10px;padding:13px;font:800 15px system-ui,sans-serif;background:var(--OK);color:#fff;margin-top:6px}.sheet .b.sec{background:#e2e8f0;color:#334155}
+.hidden{display:none!important}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--Ph);color:#fff;padding:10px 18px;border-radius:30px;font-weight:700;font-size:13px;z-index:950;display:none;max-width:92vw}
+.tut{position:absolute;z-index:800;background:#fffbeb;border:2px solid var(--WN);border-radius:12px;padding:12px 14px;max-width:320px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.tut b{display:block;margin-bottom:4px}.tut .n{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}.tut button{border:0;border-radius:8px;padding:7px 12px;font:700 13px system-ui,sans-serif;background:var(--P);color:#fff}
+#btn_lista{display:none}
+@media (max-width:820px){
+  aside{position:absolute;z-index:600;left:0;right:0;bottom:0;width:auto;max-height:46%;border-left:0;border-top:2px solid var(--A);border-radius:14px 14px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.2);transform:translateY(calc(100% - 40px));transition:transform .25s}
+  aside.open{transform:none}
+  aside h2{cursor:pointer}
+  .kpis{grid-template-columns:repeat(5,1fr)}.kpi b{font-size:17px}.kpi span{font-size:8.5px}
+  .legenda{bottom:52px}
+  .leaflet-bottom{z-index:500}
+}
+@media print{
+  header,.bar,.legenda,.leaflet-control,aside h2 .pill{display:none!important}
+  main{display:block}#map{height:120mm!important;width:100%}aside{position:static;width:auto;max-height:none;transform:none;border:0}
+  .lista{overflow:visible}.card{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div><div class="s">Checks · Efluente Não Doméstico</div><div class="t">Mapa de Vistorias</div></div>
+    <div class="st" id="status">carregando…</div>
+  </div>
+  <div class="kpis">
+    <div class="kpi" data-f="todas" onclick="setSit('todas')"><b id="k_tot">–</b><span>vistorias</span></div>
+    <div class="kpi ok" data-f="ok" onclick="setSit('ok')"><b id="k_ok">–</b><span>conformes</span></div>
+    <div class="kpi nok" data-f="nok" onclick="setSit('nok')"><b id="k_nok">–</b><span>notificadas</span></div>
+    <div class="kpi venc" data-f="venc" onclick="setSit('venc')"><b id="k_venc">–</b><span>prazo vencido</span></div>
+    <div class="kpi" data-f="prox" onclick="setSit('prox')"><b id="k_prox">–</b><span>vencem em 7 d</span></div>
+  </div>
+</header>
+<div class="bar">
+  <input type="search" id="q" placeholder="Buscar matrícula, empresa, protocolo, endereço…" oninput="render()">
+  <select id="per" onchange="render()"><option value="0">Todo o período</option><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="365">Último ano</option></select>
+  <select id="cid" onchange="render()"><option value="">Todas as cidades</option></select>
+  <select id="tipo" onchange="render()"><option value="todos">Empresas + saídas + PVs</option><option value="empresa">Só empresas</option><option value="saida">Só saídas de esgoto</option><option value="pv">Só PVs</option></select>
+  <button class="sec" onclick="toggleBase()" id="btn_base">🛰️ Satélite</button>
+  <button class="sec" onclick="exportarCsv()">⬇ CSV</button>
+  <button class="sec" onclick="window.print()">🖨 Relatório</button>
+  <button onclick="carregar(true)">↻ Atualizar</button>
+  <button class="sec" onclick="tutorial(0)">? Tour</button>
+</div>
+<main>
+  <div id="map"></div>
+  <div class="legenda"><i style="background:#10b981"></i>Conforme &nbsp;<i style="background:#dc2626"></i>Notificada &nbsp;<i style="background:#7f1d1d"></i>Prazo vencido<br><i style="background:#0284c7"></i>Saída de esgoto &nbsp;<i style="background:#f59e0b;border-radius:2px"></i>PV (amarelo = a classificar)</div>
+  <aside id="aside">
+    <h2 onclick="document.getElementById('aside').classList.toggle('open')"><span>Últimas vistorias <span class="pill" id="n_lista">0</span></span><span id="ord" onclick="event.stopPropagation();alternarOrdem()" style="cursor:pointer">↓ data</span></h2>
+    <div class="lista" id="lista"></div>
+  </aside>
+</main>
+<div class="toast" id="toast"></div>
+<div id="sheet_bg" class="sheet-bg hidden" onclick="fecharSheet()"></div>
+<div id="sheet" class="sheet hidden"><div id="sheet_body"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script>
+// ─── CONFIG ────────────────────────────────────────────────────────────
+// Mesmo backend do app de campo. localStorage 'endpoint_central' (compartilhado
+// com o index.html, mesma origem) sobrepõe a URL de fábrica.
+var ENDPOINT_FABRICA='https://script.google.com/macros/s/AKfycbynEHFaqH3n5HJU381mwNZHfGGSLkYR7T49Lj18zzWGZSm9887MYbt5HGep0QSkTpRf/exec';
+function endpoint(){try{var e=localStorage.getItem('endpoint_central');if(e&&e!=='off')return e;}catch(x){}return ENDPOINT_FABRICA;}
+var CODS={"10":"Calhas embutidas sem acesso para teste","11":"Interligação correta","13":"Água pluvial na RCE","14":"Fossa séptica interligada na RCE","15":"Esgoto lançado parcialmente em outro corpo receptor","17":"Ligação fora do padrão","18":"Sem caixa de gordura e afins","19":"Ramal interno obstruído / irregular","20":"Fossa não aterrada e aparente","21":"Vistoria parcial","22":"Caixa de gordura sem funcionalidade","23":"END sem tratamento / fora dos padrões","31":"Não ligado com DTI disponível","32":"DTI não localizado","33":"Não ligado, RCE até 100 m","34":"Não ligado, RCE a mais de 100 m","35":"Sem cota para interligação","51":"Lote vago","52":"Imóvel demolido","53":"Imóvel abandonado","54":"Não autorizou VTO","58":"Solicitação em duplicidade","59":"Solicitação cancelada","60":"DTI obstruído / lacrado","61":"Ligação de água cancelada","71":"Problemas internos","73":"Manutenção LPE (Sanepar)","74":"Necessita topografia","75":"Imóvel em construção","76":"Imóvel em reforma","77":"Endereço não localizado","78":"Orientação técnica","79":"Imóvel fechado"};
+
+// ─── LÓGICA PURA (testável em Node: window.MAPA) ───────────────────────
+var MAPA={
+  parseData:function(v){ if(!v)return null; var d=new Date(v); if(isNaN(d)){var m=String(v).match(/(\d{4})-(\d{2})-(\d{2})/); if(m)d=new Date(+m[1],+m[2]-1,+m[3]);} return isNaN(d)?null:d; },
+  codigos:function(p){ return String(p.codigo||'').replace(/CÓD/gi,'').split(/[+,;]/).map(function(x){return x.trim();}).filter(Boolean); },
+  notificada:function(p){ return /notificad/i.test(String(p.situacao||'')); },
+  // prazo: {status:'ok'|'nok'|'venc'|'prox', dias:n (negativo = vencido), vence:Date}
+  prazo:function(p,hoje){
+    hoje=hoje||new Date();
+    if(p.tipo!=='empresa')return {status:'ponto'};
+    if(!MAPA.notificada(p))return {status:'ok'};
+    var d=MAPA.parseData(p.dataVistoria), n=parseInt(p.prazoDias,10);
+    if(!d||!n)return {status:'nok'};
+    var vence=new Date(d.getTime()+n*86400000), dias=Math.ceil((vence-hoje)/86400000);
+    return {status:dias<0?'venc':(dias<=7?'prox':'nok'), dias:dias, vence:vence};
+  },
+  filtrar:function(pontos,f,hoje){
+    hoje=hoje||new Date();
+    var q=String(f.q||'').toLowerCase().trim(), per=parseInt(f.per,10)||0, lim=per?new Date(hoje.getTime()-per*86400000):null;
+    return pontos.filter(function(p){
+      if(f.tipo&&f.tipo!=='todos'&&p.tipo!==f.tipo)return false;
+      if(f.cid&&p.cidade!==f.cid)return false;
+      if(lim){var d=MAPA.parseData(p.dataVistoria); if(d&&d<lim)return false;}
+      if(q){var alvo=[p.matricula,p.empresa,p.protocolo,p.endereco,p.cidade,p.codigo,p.etiqueta].join(' ').toLowerCase(); if(alvo.indexOf(q)<0)return false;}
+      if(f.sit&&f.sit!=='todas'&&p.tipo==='empresa'){var s=MAPA.prazo(p,hoje).status; if(f.sit==='ok'&&s!=='ok')return false; if(f.sit==='nok'&&s==='ok')return false; if(f.sit==='venc'&&s!=='venc')return false; if(f.sit==='prox'&&s!=='prox')return false;}
+      return true;
+    });
+  },
+  kpis:function(pontos,hoje){
+    var k={tot:0,ok:0,nok:0,venc:0,prox:0,ultima:null};
+    pontos.forEach(function(p){ if(p.tipo!=='empresa')return; k.tot++; var s=MAPA.prazo(p,hoje).status; if(s==='ok')k.ok++; else {k.nok++; if(s==='venc')k.venc++; if(s==='prox')k.prox++;}
+      var d=MAPA.parseData(p.dataVistoria); if(d&&(!k.ultima||d>k.ultima))k.ultima=d; });
+    return k;
+  },
+  ordenar:function(pontos,modo){ var a=pontos.slice(); if(modo==='empresa')a.sort(function(x,y){return String(x.empresa).localeCompare(String(y.empresa));}); else a.sort(function(x,y){return (MAPA.parseData(y.dataVistoria)||0)-(MAPA.parseData(x.dataVistoria)||0);}); return a; },
+  csv:function(pontos,hoje){
+    var cab=['tipo','matricula','empresa','endereco','cidade','lat','lng','codigo','situacao','prazoDias','vencimento','status','dataVistoria','protocolo','cor','etiqueta','pasta'];
+    function c(v){v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+    var linhas=[cab.join(';')];
+    pontos.forEach(function(p){var pr=MAPA.prazo(p,hoje);linhas.push([p.tipo,p.matricula,p.empresa,p.endereco,p.cidade,p.lat,p.lng,p.codigo,p.situacao,p.prazoDias,pr.vence?pr.vence.toISOString().substring(0,10):'',pr.status,(MAPA.parseData(p.dataVistoria)||'')&&MAPA.parseData(p.dataVistoria).toISOString(),p.protocolo,p.cor,p.etiqueta,p.pasta||''].map(c).join(';'));});
+    return '﻿'+linhas.join('\r\n');
+  },
+  dataBr:function(v){var d=MAPA.parseData(v);return d?d.toLocaleDateString('pt-BR'):'—';}
+};
+if(typeof window!=='undefined')window.MAPA=MAPA;
+
+// ─── ESTADO / UI ──────────────────────────────────────────────────────
+var PONTOS=[], map=null, cluster=null, baseOsm=null, baseSat=null, satOn=false, marcadores={}, sit='todas', ordem='data', selecionado=null, _timerAuto=null;
+function $(id){return document.getElementById(id);}
+function toast(m,t){var e=$('toast');e.textContent=m;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(function(){e.style.display='none';},t||3500);}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function abrirSheet(h){$('sheet_body').innerHTML=h;$('sheet').classList.remove('hidden');$('sheet_bg').classList.remove('hidden');}
+function fecharSheet(){$('sheet').classList.add('hidden');$('sheet_bg').classList.add('hidden');}
+function setSit(s){sit=s;document.querySelectorAll('.kpi').forEach(function(k){k.classList.toggle('on',k.getAttribute('data-f')===s);});render();}
+function alternarOrdem(){ordem=ordem==='data'?'empresa':'data';$('ord').textContent=ordem==='data'?'↓ data':'A→Z empresa';render();}
+function filtrosAtuais(){return {q:$('q').value,per:$('per').value,cid:$('cid').value,tipo:$('tipo').value,sit:sit};}
+
+function iniciarMapa(){
+  if(!window.L||map)return;
+  map=L.map('map',{zoomControl:true}).setView([-25.47,-49.28],12);
+  baseOsm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  baseSat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri, Maxar, Earthstar Geographics'});
+  cluster=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:40,spiderfyOnMaxZoom:true,showCoverageOnHover:false}):L.layerGroup()).addTo(map);
+}
+function toggleBase(){ if(!map)return; satOn=!satOn; if(satOn){map.removeLayer(baseOsm);baseSat.addTo(map);} else {map.removeLayer(baseSat);baseOsm.addTo(map);} $('btn_base').textContent=satOn?'🗺️ Mapa':'🛰️ Satélite'; }
+function icone(p){
+  var pr=MAPA.prazo(p), cls=p.tipo==='empresa'?pr.status.replace('prox','nok'):p.tipo;
+  if(p.tipo==='pv'&&p.cor)cls+=' '+p.cor;
+  return L.divIcon({className:'',html:'<div class="pin '+cls+'" title="'+esc(p.empresa)+'"></div>',iconSize:[26,26],iconAnchor:[13,26],popupAnchor:[0,-24]});
+}
+function popup(p){
+  var pr=MAPA.prazo(p), cods=MAPA.codigos(p);
+  var h='<b class="e">'+esc(p.empresa||'(sem nome)')+'</b><br><span style="color:#64748b">'+esc(p.tipo==='empresa'?'Empresa':p.tipo==='saida'?'Saída de esgoto':'PV')+' · matrícula '+esc(p.matricula)+'</span><br>'+esc(p.endereco)+(p.cidade?' — '+esc(p.cidade):'')+'<br>';
+  if(p.tipo==='empresa'){
+    h+='<div style="margin-top:6px"><b>'+(pr.status==='ok'?'✅ Conforme':'🚨 Notificada')+'</b>'+(pr.vence?' · vence '+pr.vence.toLocaleDateString('pt-BR')+(pr.dias<0?' <span class="pill venc">vencido há '+(-pr.dias)+' d</span>':pr.dias<=7?' <span class="pill prox">'+pr.dias+' d</span>':''):'')+'</div>';
+    if(cods.length)h+='<div style="margin-top:4px">'+cods.map(function(c){return '<span class="pill">CÓD '+esc(c)+'</span> '+esc(CODS[c]||'');}).join('<br>')+'</div>';
+    h+='<div style="margin-top:4px;color:#64748b">Vistoria em '+MAPA.dataBr(p.dataVistoria)+' · protocolo '+esc(p.protocolo)+(p.atividade?'<br>'+esc(String(p.atividade).split('|')[1]||p.atividade):'')+'</div>';
+    if(p.observacao)h+='<div style="margin-top:4px;color:#92400e;font-size:12px">⚠ '+esc(p.observacao)+'</div>';
+  } else {
+    h+='<div style="margin-top:4px;color:#64748b">Foto georreferenciada em '+MAPA.dataBr(p.dataVistoria)+'</div>'+(p.etiqueta?'<div style="margin-top:4px">🏷 '+esc(p.etiqueta)+'</div>':'');
+  }
+  h+='<div class="pop-acoes">';
+  h+='<a target="_blank" rel="noopener" href="https://www.google.com/maps?q&layer=c&cbll='+p.lat+','+p.lng+'">Street View</a>';
+  h+='<a class="sec" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.lat+','+p.lng+'">Rota</a>';
+  if(p.pasta)h+='<a class="sec" target="_blank" rel="noopener" href="'+esc(p.pasta)+'">📁 Fotos/laudo</a>';
+  h+='<button class="sec" onclick="editarPin(\''+esc(p.id)+'\')">✏️ Cor / etiqueta</button>';
+  h+='</div>';
+  return h;
+}
+function render(){
+  var f=filtrosAtuais(), vis=MAPA.filtrar(PONTOS,f), hoje=new Date();
+  renderMapa(vis); renderLista(vis,hoje,f);
+}
+function renderMapa(vis){
+  var f=filtrosAtuais(), hoje=new Date();
+  var k=MAPA.kpis(MAPA.filtrar(PONTOS,{q:f.q,per:f.per,cid:f.cid,tipo:'todos',sit:'todas'}),hoje);
+  $('k_tot').textContent=k.tot;$('k_ok').textContent=k.ok;$('k_nok').textContent=k.nok;$('k_venc').textContent=k.venc;$('k_prox').textContent=k.prox;
+  // mapa
+  if(cluster){cluster.clearLayers();marcadores={};
+    vis.forEach(function(p){ if(p.lat==null||p.lng==null||isNaN(+p.lat))return; var m=L.marker([+p.lat,+p.lng],{icon:icone(p)}).bindPopup(popup(p)); marcadores[p.id]=m; cluster.addLayer(m); });
+    if(vis.length&&!render._ajustou){try{map.fitBounds(cluster.getBounds().pad(0.2),{maxZoom:16});render._ajustou=true;}catch(e){}}
+  }
+}
+function renderLista(vis,hoje,f){
+  var emp=MAPA.ordenar(vis.filter(function(p){return p.tipo==='empresa';}),ordem);
+  $('n_lista').textContent=emp.length;
+  $('lista').innerHTML=emp.length?emp.map(function(p){var pr=MAPA.prazo(p,hoje);var cls=pr.status==='ok'?'ok':(pr.status==='venc'?'venc':'nok');
+    return '<div class="card '+cls+(selecionado===p.id?' sel':'')+'" onclick="focar(\''+esc(p.id)+'\')"><div class="e">'+esc(p.empresa||'(sem nome)')+'</div><div class="m">'+esc(p.matricula)+' · '+esc(p.endereco)+(p.cidade?' · '+esc(p.cidade):'')+'</div><div class="r">'+(pr.status==='ok'?'✅ Conforme':'🚨 Notificada')+' · CÓD '+esc(MAPA.codigos(p).join(' + ')||'—')+' · '+MAPA.dataBr(p.dataVistoria)+(pr.vence?(pr.dias<0?' <span class="pill venc">vencido há '+(-pr.dias)+' d</span>':pr.dias<=7?' <span class="pill prox">vence em '+pr.dias+' d</span>':' <span class="pill">vence '+pr.vence.toLocaleDateString('pt-BR')+'</span>'):'')+'</div></div>';}).join('')
+    :'<div style="padding:14px;color:#64748b;text-align:center">Nenhuma vistoria com esses filtros.</div>';
+}
+function focar(id){
+  selecionado=id; var m=marcadores[id];
+  renderLista(MAPA.filtrar(PONTOS,filtrosAtuais()),new Date(),filtrosAtuais());   // só a lista: não recria os marcadores
+  if(window.innerWidth<=820)$('aside').classList.remove('open');
+  if(m&&map){ try{ if(cluster.zoomToShowLayer){cluster.zoomToShowLayer(m,function(){m.openPopup();});} else {map.setView(m.getLatLng(),17);m.openPopup();} }catch(e){ map.setView(m.getLatLng(),17); m.openPopup(); } }
+}
+
+// ─── CARGA (JSONP) + cache offline ────────────────────────────────────
+function carregar(manual){
+  $('status').textContent='carregando…';
+  var cb='cbMapa'+Date.now(); var tok=''; try{tok=localStorage.getItem('mapa_token')||'';}catch(e){}
+  var sc=document.createElement('script'); var ok=false;
+  window[cb]=function(resp){ ok=true; delete window[cb]; sc.remove();
+    if(!resp||!resp.ok){ if(resp&&/token/i.test(resp.erro||'')){pedirToken();return;} $('status').textContent='erro ao carregar'; toast('Não consegui ler o backend: '+(resp&&resp.erro||'resposta inválida'),5000); return; }
+    aplicarDados(resp.pontos||[], new Date(), false);
+    try{localStorage.setItem('mapa_cache',JSON.stringify({quando:new Date().toISOString(),pontos:resp.pontos||[]}));}catch(e){}
+    if(manual)toast('Atualizado: '+(resp.pontos||[]).length+' pontos');
+  };
+  sc.onerror=function(){ if(!ok)usarCache('falha de rede'); };
+  setTimeout(function(){ if(!ok&&window[cb]){ delete window[cb]; sc.remove(); usarCache('tempo esgotado'); } },25000);
+  sc.src=endpoint()+'?acao=mapa&callback='+cb+(tok?'&token='+encodeURIComponent(tok):'')+'&_='+Date.now();
+  document.body.appendChild(sc);
+}
+function usarCache(motivo){
+  try{var c=JSON.parse(localStorage.getItem('mapa_cache')||'null'); if(c){aplicarDados(c.pontos,new Date(c.quando),true);toast('Sem acesso ao backend ('+motivo+'): mostrando dados de '+new Date(c.quando).toLocaleString('pt-BR'),6000);return;}}catch(e){}
+  $('status').textContent='sem dados ('+motivo+')'; toast('Não consegui carregar as vistorias ('+motivo+').',6000);
+}
+function aplicarDados(pontos,quando,doCache){
+  PONTOS=pontos; var cids={}; pontos.forEach(function(p){if(p.cidade)cids[p.cidade]=1;});
+  var sel=$('cid'), atual=sel.value; sel.innerHTML='<option value="">Todas as cidades</option>'+Object.keys(cids).sort().map(function(c){return '<option'+(c===atual?' selected':'')+'>'+esc(c)+'</option>';}).join('');
+  $('status').innerHTML=(doCache?'⚠ cache de ':'✓ atualizado ')+quando.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'<br>'+pontos.length+' pontos';
+  render();
+}
+function pedirToken(){
+  abrirSheet('<h3>🔐 Acesso ao mapa</h3><p>Este backend exige um código de acesso para mostrar as vistorias. Peça à coordenação.</p><input type="password" id="tok_in" placeholder="código de acesso"><button class="b" onclick="salvarToken()">Entrar</button>');
+  setTimeout(function(){var i=$('tok_in');if(i)i.focus();},50);
+}
+function salvarToken(){try{localStorage.setItem('mapa_token',$('tok_in').value.trim());}catch(e){} fecharSheet(); carregar(true);}
+
+// ─── EDIÇÃO DE PIN (cor / etiqueta) — POST editarPonto com código de concursado ──
+function editarPin(id){
+  var p=PONTOS.filter(function(x){return x.id===id;})[0]; if(!p)return;
+  var cod=''; try{cod=localStorage.getItem('mapa_cod_concursado')||'';}catch(e){}
+  abrirSheet('<h3>✏️ Editar ponto</h3><p><b>'+esc(p.empresa)+'</b> · '+esc(p.tipo)+' · '+esc(p.matricula)+'</p>'
+    +'<p>Cor do pin (PV): <select id="ed_cor" style="font-size:16px;padding:8px"><option value="">(manter)</option><option value="amarelo">amarelo — a classificar</option><option value="verde">verde — ok</option><option value="vermelho">vermelho — problema</option></select></p>'
+    +'<input type="text" id="ed_etq" placeholder="Etiqueta / observação do ponto" value="'+esc(p.etiqueta||'')+'">'
+    +'<input type="password" id="ed_cod" placeholder="Código de fiscal concursado" value="'+esc(cod)+'">'
+    +'<button class="b" onclick="enviarEdicao(\''+esc(id)+'\')">Salvar no backend</button><button class="b sec" onclick="fecharSheet()">Cancelar</button>');
+}
+function enviarEdicao(id){
+  var cor=$('ed_cor').value, etq=$('ed_etq').value, cod=$('ed_cod').value.trim();
+  if(!cod){toast('Informe o código de concursado.');return;}
+  try{localStorage.setItem('mapa_cod_concursado',cod);}catch(e){}
+  fetch(endpoint(),{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({acao:'editarPonto',id:id,cor:cor,etiqueta:etq,codigo:cod})})
+    .then(function(){ fecharSheet(); toast('Enviado. Atualizando em 3 s…'); var p=PONTOS.filter(function(x){return x.id===id;})[0]; if(p){if(cor)p.cor=cor;p.etiqueta=etq;render();} setTimeout(function(){carregar(false);},3000); })
+    .catch(function(){ toast('Falha de rede ao salvar. Tente de novo.'); });
+}
+
+// ─── EXPORTAR / TOUR ─────────────────────────────────────────────────
+function exportarCsv(){
+  var vis=MAPA.filtrar(PONTOS,filtrosAtuais()); var blob=new Blob([MAPA.csv(vis)],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='vistorias_'+new Date().toISOString().substring(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove(); toast(vis.length+' linha(s) exportada(s)');
+}
+var TOUR=[
+  ['Números do período','Os cinco números do topo resumem o que está no mapa. Toque num deles para filtrar: só notificadas, só prazo vencido…','.kpis'],
+  ['Filtros','Busque por matrícula, empresa, protocolo ou endereço. Mude o período, a cidade e o tipo de ponto. Satélite mostra a imagem aérea.','.bar'],
+  ['O mapa','Verde é conforme, vermelho é notificada, vinho piscando é prazo vencido. Azul é a saída de esgoto fotografada; losango é o PV. Toque num pin para ver detalhes, Street View, rota e a pasta de fotos.','#map'],
+  ['Lista e relatório','A lista mostra as últimas vistorias; toque para ir ao ponto. CSV exporta o que está filtrado; Relatório imprime mapa + lista. Tudo lê direto do backend, sem planilha aberta.','#aside']
+];
+function tutorial(i){
+  var old=document.querySelector('.tut'); if(old)old.remove();
+  if(i>=TOUR.length){try{localStorage.setItem('mapa_tour','1');}catch(e){}return;}
+  var alvo=document.querySelector(TOUR[i][2]), r=alvo?alvo.getBoundingClientRect():{left:20,bottom:120};
+  var d=document.createElement('div'); d.className='tut'; d.innerHTML='<b>'+(i+1)+'/'+TOUR.length+' · '+TOUR[i][0]+'</b>'+TOUR[i][1]+'<div class="n"><button class="sec" style="background:#e2e8f0;color:#334155" onclick="tutorial(99)">Fechar</button><button onclick="tutorial('+(i+1)+')">'+(i+1<TOUR.length?'Próximo':'Concluir')+'</button></div>';
+  d.style.left=Math.max(8,Math.min(r.left,window.innerWidth-330))+'px'; d.style.top=Math.min(r.bottom+8,window.innerHeight-200)+'px';
+  document.body.appendChild(d);
+}
+window.addEventListener('load',function(){
+  iniciarMapa(); carregar(false);
+  _timerAuto=setInterval(function(){carregar(false);},120000);
+  var feito=false; try{feito=!!localStorage.getItem('mapa_tour');}catch(e){}
+  if(!feito)setTimeout(function(){tutorial(0);},1200);
+});
+window.addEventListener('error',function(ev){try{var l=JSON.parse(localStorage.getItem('mapa_erros')||'[]');l.push({t:new Date().toISOString(),m:String(ev.message).substring(0,200)});localStorage.setItem('mapa_erros',JSON.stringify(l.slice(-20)));}catch(e){}});
+</script>
+</body>
+</html>
